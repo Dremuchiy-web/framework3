@@ -1,0 +1,105 @@
+services:
+  iss_db:
+    container_name: iss_db
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: cassiopeia
+      POSTGRES_PASSWORD: cassiopeia_pass
+      POSTGRES_DB: iss_data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cassiopeia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    container_name: redis_cache
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rust_iss:
+    container_name: rust_iss
+    build:
+      context: ./rust_iss
+      dockerfile: Dockerfile
+    # Порт не пробрасываем наружу, доступ через nginx
+    environment:
+      DATABASE_URL: postgresql://cassiopeia:cassiopeia_pass@iss_db:5432/iss_data
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+      ISS_API_KEY: ${ISS_API_KEY:-demo_key}
+      NASA_API_KEY: ${NASA_API_KEY:-demo_key}
+      OSDR_API_KEY: ${OSDR_API_KEY:-demo_key}
+      JWST_API_KEY: ${JWST_API_KEY:-demo_key}
+      ASTRONOMY_API_KEY: ${ASTRONOMY_API_KEY:-demo_key}
+    depends_on:
+      iss_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+
+  php_web:
+    container_name: php_web
+    build:
+      context: ./php_web
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: iss_db
+      DB_PORT: 5432
+      DB_DATABASE: iss_data
+      DB_USERNAME: cassiopeia
+      DB_PASSWORD: cassiopeia_pass
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_ENV: local
+      APP_DEBUG: true
+    depends_on:
+      - iss_db
+      - redis
+    volumes:
+      - ./php_web:/var/www/html
+
+  pascal_legacy:
+    container_name: pascal_legacy
+    build:
+      context: ./pascal_legacy
+      dockerfile: Dockerfile
+    volumes:
+      - ./pascal_legacy/output:/app/output
+      - ./pascal_legacy/data:/app/data
+    depends_on:
+      - iss_db
+
+  nginx:
+    container_name: nginx_proxy
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./php_web/public:/var/www/html/public
+    depends_on:
+      - php_web
+      - rust_iss
+
+volumes:
+  postgres_data:
+  redis_data:
+  cargo_cache:
