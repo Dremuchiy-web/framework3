@@ -1,0 +1,31 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\ApiClient;
+
+class JwstController {
+    private $apiClient;
+
+    public function __construct() {
+        $this->apiClient = new ApiClient();
+    }
+
+    public function index() {
+        $this->renderView('jwst/index', [
+            'title' => 'JWST Data'
+        ]);
+    }
+
+    public function getData() {
+        header('Content-Type: application/json');
+        $data = $this->apiClient->get('http://rust_iss:3000/api/jwst');
+        echo json_encode($data);
+    }
+
+    private function renderView($view, $data = []) {
+        extract($data);
+        include __DIR__ . '/../../resources/views/' . $view . '.php';
+    }
+}
+
