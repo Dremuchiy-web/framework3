@@ -25,7 +25,12 @@ class JwstController {
 
     private function renderView($view, $data = []) {
         extract($data);
-        include __DIR__ . '/../../resources/views/' . $view . '.php';
+        $viewPath = __DIR__ . '/../../../resources/views/' . $view . '.php';
+        if (file_exists($viewPath)) {
+            include $viewPath;
+        } else {
+            echo "View not found: $viewPath";
+        }
     }
 }
 
