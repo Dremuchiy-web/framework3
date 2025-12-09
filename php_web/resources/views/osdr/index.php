@@ -72,7 +72,10 @@
 
             async function fetchOsdrData() {
                 try {
-                    const response = await fetch('http://rust_iss:3000/api/osdr');
+                    const response = await fetch('/osdr/data');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
                     const data = await response.json();
                     allOsdrData = data;
                     renderTable();
