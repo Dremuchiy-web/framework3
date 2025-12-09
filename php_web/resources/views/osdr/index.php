@@ -16,49 +16,44 @@
     </nav>
 
     <div class="container mt-4">
-        <h1 class="mb-4">ISS Data</h1>
+        <h1 class="mb-4">OSDR Data - NASA Open Science Data Repository</h1>
         
         <div class="filter-section">
             <div class="row">
                 <div class="col-md-4">
-                    <div class="search-box">
-                        <input type="text" id="searchInput" class="form-control" placeholder="Поиск...">
-                    </div>
+                    <input type="text" id="searchInput" class="form-control mb-2" placeholder="Поиск по названию...">
                 </div>
-                <div class="col-md-3">
-                    <select id="sortColumn" class="form-select">
-                        <option value="timestamp">Дата</option>
-                        <option value="latitude">Широта</option>
-                        <option value="longitude">Долгота</option>
-                        <option value="altitude">Высота</option>
-                        <option value="velocity">Скорость</option>
+                <div class="col-md-4">
+                    <select id="sortColumn" class="form-select mb-2">
+                        <option value="dataset_id">ID набора данных</option>
+                        <option value="title">Название</option>
+                        <option value="file_count">Количество файлов</option>
+                        <option value="size_bytes">Размер</option>
+                        <option value="created_at">Дата создания</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <select id="sortOrder" class="form-select">
+                <div class="col-md-4">
+                    <select id="sortOrder" class="form-select mb-2">
                         <option value="asc">По возрастанию</option>
                         <option value="desc">По убыванию</option>
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <button class="btn btn-primary w-100" onclick="loadData()">Обновить</button>
-                </div>
             </div>
         </div>
 
-        <div class="table-container">
-            <table class="table table-striped table-hover" id="dataTable">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped mt-3">
                 <thead class="table-dark">
                     <tr>
-                        <th>Дата</th>
-                        <th>Широта</th>
-                        <th>Долгота</th>
-                        <th>Высота</th>
-                        <th>Скорость</th>
-                        <th>Видимость</th>
+                        <th>ID набора данных</th>
+                        <th>Название</th>
+                        <th>Описание</th>
+                        <th>Количество файлов</th>
+                        <th>Размер (байты)</th>
+                        <th>Дата создания</th>
                     </tr>
                 </thead>
-                <tbody id="tableBody">
+                <tbody id="osdrTableBody">
                     <tr>
                         <td colspan="6" class="text-center">Загрузка данных...</td>
                     </tr>
@@ -68,77 +63,80 @@
     </div>
 
     <script>
-        let allData = [];
+        document.addEventListener('DOMContentLoaded', function () {
+            const osdrTableBody = document.getElementById('osdrTableBody');
+            const searchInput = document.getElementById('searchInput');
+            const sortColumn = document.getElementById('sortColumn');
+            const sortOrder = document.getElementById('sortOrder');
+            let allOsdrData = [];
 
-        function loadData() {
-            fetch('/iss/data')
-                .then(response => response.json())
-                .then(data => {
-                    allData = data;
-                    renderTable(data);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('tableBody').innerHTML = 
-                        '<tr><td colspan="6" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
-                });
-        }
-
-        function renderTable(data) {
-            const tbody = document.getElementById('tableBody');
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет данных</td></tr>';
-                return;
+            async function fetchOsdrData() {
+                try {
+                    const response = await fetch('http://rust_iss:3000/api/osdr');
+                    const data = await response.json();
+                    allOsdrData = data;
+                    renderTable();
+                } catch (error) {
+                    console.error('Error fetching OSDR data:', error);
+                    osdrTableBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Ошибка загрузки данных: ${error.message}</td></tr>`;
+                }
             }
 
-            tbody.innerHTML = data.map(item => `
-                <tr>
-                    <td>${new Date(item.timestamp).toLocaleString('ru-RU')}</td>
-                    <td>${item.latitude.toFixed(4)}</td>
-                    <td>${item.longitude.toFixed(4)}</td>
-                    <td>${item.altitude.toFixed(2)}</td>
-                    <td>${item.velocity.toFixed(2)}</td>
-                    <td>${item.visibility}</td>
-                </tr>
-            `).join('');
-        }
+            function renderTable() {
+                let filteredData = allOsdrData.filter(item => {
+                    const searchTerm = searchInput.value.toLowerCase();
+                    const matchesSearch = (item.title || '').toLowerCase().includes(searchTerm) ||
+                                         (item.dataset_id || '').toLowerCase().includes(searchTerm) ||
+                                         (item.description || '').toLowerCase().includes(searchTerm);
+                    return matchesSearch;
+                });
 
-        function filterAndSort() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const sortColumn = document.getElementById('sortColumn').value;
-            const sortOrder = document.getElementById('sortOrder').value;
+                filteredData.sort((a, b) => {
+                    let aVal = a[sortColumn.value];
+                    let bVal = b[sortColumn.value];
+                    
+                    if (sortColumn.value === 'created_at') {
+                        aVal = new Date(aVal).getTime();
+                        bVal = new Date(bVal).getTime();
+                    } else if (sortColumn.value === 'size_bytes' || sortColumn.value === 'file_count') {
+                        aVal = Number(aVal) || 0;
+                        bVal = Number(bVal) || 0;
+                    } else {
+                        aVal = String(aVal || '').toLowerCase();
+                        bVal = String(bVal || '').toLowerCase();
+                    }
 
-            let filtered = allData.filter(item => {
-                return Object.values(item).some(val => 
-                    String(val).toLowerCase().includes(searchTerm)
-                );
-            });
+                    if (sortOrder.value === 'asc') {
+                        return aVal > bVal ? 1 : -1;
+                    } else {
+                        return aVal < bVal ? 1 : -1;
+                    }
+                });
 
-            filtered.sort((a, b) => {
-                let aVal = a[sortColumn];
-                let bVal = b[sortColumn];
-                
-                if (sortColumn === 'timestamp') {
-                    aVal = new Date(aVal).getTime();
-                    bVal = new Date(bVal).getTime();
+                osdrTableBody.innerHTML = '';
+                if (filteredData.length === 0) {
+                    osdrTableBody.innerHTML = `<tr><td colspan="6" class="text-center">Нет данных для отображения.</td></tr>`;
+                    return;
                 }
 
-                if (sortOrder === 'asc') {
-                    return aVal > bVal ? 1 : -1;
-                } else {
-                    return aVal < bVal ? 1 : -1;
-                }
-            });
+                filteredData.forEach(item => {
+                    const row = osdrTableBody.insertRow();
+                    row.insertCell().textContent = item.dataset_id || 'N/A';
+                    row.insertCell().textContent = item.title || 'N/A';
+                    row.insertCell().textContent = (item.description || 'N/A').substring(0, 100) + (item.description && item.description.length > 100 ? '...' : '');
+                    row.insertCell().textContent = item.file_count !== null ? item.file_count : 'N/A';
+                    row.insertCell().textContent = item.size_bytes !== null ? item.size_bytes.toLocaleString() : 'N/A';
+                    row.insertCell().textContent = item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : 'N/A';
+                });
+            }
 
-            renderTable(filtered);
-        }
+            searchInput.addEventListener('input', renderTable);
+            sortColumn.addEventListener('change', renderTable);
+            sortOrder.addEventListener('change', renderTable);
 
-        document.getElementById('searchInput').addEventListener('input', filterAndSort);
-        document.getElementById('sortColumn').addEventListener('change', filterAndSort);
-        document.getElementById('sortOrder').addEventListener('change', filterAndSort);
-
-        loadData();
+            fetchOsdrData();
+        });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
